@@ -17,9 +17,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let peripherals = Peripherals::take()?;
     let pins = peripherals.pins;
-
-    log::info!("Here");
-
     
     let mut display_wrapper = OLEDDisplay::new(
         peripherals.i2c0, 
@@ -29,10 +26,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         pins.gpio36
     )?;
 
-    display_wrapper.draw();
+    display_wrapper.test_draw();
     
+    let mut angle = 0_f32;
     // Keep the program alive
     loop {
         sleep(Duration::from_secs(1));
+        display_wrapper.draw(angle);
+        angle += 1_f32;
+        angle = angle % 360_f32;
     }
 }

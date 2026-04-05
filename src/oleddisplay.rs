@@ -1,6 +1,7 @@
 
 use std::thread::sleep;
 use std::time::Duration;
+use std::error::Error;
 
 use esp_idf_svc::hal::{
     gpio::{InputPin, OutputPin, PinDriver, Output}, 
@@ -15,11 +16,17 @@ use ssd1306::{
 };
 
 use embedded_graphics::{
-    mono_font::{ascii::FONT_6X10, MonoTextStyleBuilder},
-    pixelcolor::BinaryColor,
-    prelude::*,
-    text::Text,
+    mono_font::{MonoTextStyleBuilder, iso_8859_1::FONT_7X13}, 
+    pixelcolor::BinaryColor, 
+    prelude::*, 
+    primitives::{Circle, PrimitiveStyleBuilder, Sector}, 
+    text::Text
 };
+
+pub enum OLEDError {
+    Draw,
+    Flush
+}
 
 pub type DI<'a> = I2CInterface<I2cDriver<'a>>;
 pub type SIZE = DisplaySize128x64;
@@ -37,15 +44,11 @@ impl <'a> OLEDDisplay<'a> {
         V:InputPin + OutputPin + 'a,
         W:InputPin + OutputPin + 'a, 
         X:InputPin + OutputPin + 'a> (i2c_bus: T, sda: U, scl: V, rst: W, vext: X) 
-        -> Result<OLEDDisplay<'a>, Box<dyn std::error::Error>> {
-      
-        log::info!("OLEDDisplay::new begin");
+        -> Result<OLEDDisplay<'a>, Box<dyn Error>> {
 
         // Drive vext low to enable the OLED display
         let mut vext_driver = PinDriver::output(vext)?;
         vext_driver.set_low()?;
-
-        log::info!("OLEDDisplay::new vext");
      
         // Reset sequence to wake up the display
         let mut reset = PinDriver::output(rst)?;
@@ -53,14 +56,12 @@ impl <'a> OLEDDisplay<'a> {
         sleep(Duration::from_millis(50));
         reset.set_high()?;
 
-        log::info!("OLEDDisplay::new reset");
-
         // Init I2C bus
         let config = I2cConfig::new().baudrate(esp_idf_svc::hal::units::Hertz(100000));
         let i2c = I2cDriver::new(
             i2c_bus,
-            sda, // SDA
-            scl, // SCL
+            sda,
+            scl,
             &config,
         )?;
 
@@ -71,11 +72,10 @@ impl <'a> OLEDDisplay<'a> {
     
         let init_r = display.init();
 
-        if let Err(e) = init_r {
+        if let Err(_e) = init_r {
             log::error!("Display init failed");
         }
 
-        log::info!("OLEDDisplay::new end");
         Ok(OLEDDisplay { 
             display: display,
             _reset: reset, 
@@ -83,20 +83,114 @@ impl <'a> OLEDDisplay<'a> {
         })
     }
 
-    pub fn draw(self: &mut Self) {
-        log::info!("About to draw");
+    fn draw_circle(self: &mut Self, angle: f32) -> Result<(), OLEDError> {
+        let display_width = 128;
+        let display_height = 64; 
+
+        let left_corner = Point::new(2 + display_width / 2, 2);
+        let diameter = display_height - 4;
+
+        let style_inner = PrimitiveStyleBuilder::new()
+            .stroke_color(BinaryColor::On)
+            .stroke_width(2)
+            .fill_color(BinaryColor::On)
+            .build(); 
+
+        let start_angle = Angle::from_degrees(0_f32 + angle);
+        let end_angle = Angle::from_degrees(180_f32);
+        Sector::new(left_corner, diameter, start_angle, end_angle)
+            .into_styled(style_inner)
+            .draw(&mut self.display)
+            .map_err(|e| {
+                log::error!("Failed to fill sector in buffer: {:?}", e);
+                OLEDError::Draw
+            })?;
+
+        let style_outer = PrimitiveStyleBuilder::new()
+            .stroke_color(BinaryColor::On)
+            .stroke_width(2)
+            .build();
+
+        Circle::new(left_corner, diameter)
+            .into_styled(style_outer)
+            .draw(&mut self.display)
+            .map_err(|e| {
+                log::error!("Failed to draw outer circle to buffer: {:?}", e);
+                OLEDError::Draw
+            })?;
+
+
+        Ok(())
+    }
+
+    fn draw_information(self: &mut Self, angle: f32) -> Result<(), OLEDError> {
+ 
+        let style = MonoTextStyleBuilder::new()
+            .text_color(BinaryColor::On)
+            .font(&FONT_7X13)
+            .build();
+
+        Text::new("Current", Point::new(2, 10), style)
+            .draw(&mut self.display)
+            .map_err(|e| {
+                log::error!("Failed to write first text line: {:?}", e);
+                OLEDError::Draw
+            })?;
+
+        Text::new("angle:", Point::new(2, 25), style)
+            .draw(&mut self.display)
+            .map_err(|e| {
+                log::error!("Failed to write second text line: {:?}", e);
+                OLEDError::Draw
+            })?;
+
+        let mut degree_str = angle.to_string();
+        degree_str.push('°');
+
+        Text::new(&degree_str, Point::new(2, 40), style)
+            .draw(&mut self.display)
+            .map_err(|e| {
+                log::error!("Failed to write angle text line: {:?}", e);
+                OLEDError::Draw
+            })?;
+
+        Ok(())
+    }
+
+    pub fn draw(self: &mut Self, angle: f32) -> Result<(), OLEDError> {
+
+        self.display.clear_buffer();
+
+        self.draw_information(angle)?;
+
+        self.draw_circle(angle)?;
+        
+        self.display.flush().map_err(|e| {
+            log::error!("Failed to flush during draw: {:?}", e);
+            OLEDError::Flush
+        })?;
+
+        Ok(())
+    }
+
+    pub fn test_draw(self: &mut Self) -> Result<(), OLEDError> {
         let text_style = MonoTextStyleBuilder::new()
-            .font(&FONT_6X10)
+            .font(&FONT_7X13)
             .text_color(BinaryColor::On)
             .build();
 
-        Text::new("Heltec LoRa V3", Point::new(0, 10), text_style)
-            .draw(&mut self.display).unwrap(); 
+        Text::new("Test Draw", Point::new(0, 10), text_style)
+            .draw(&mut self.display)
+            .map_err(|e| {
+                log::error!("Failed to draw during test_draw: {:?}", e);
+                OLEDError::Draw
+            })?; 
 
-        Text::new("Rust is Running!", Point::new(0, 30), text_style)
-            .draw(&mut self.display).unwrap();
+        self.display.flush().map_err(|e| {
+            log::error!("Failed to flush during test_draw: {:?}", e);
+            OLEDError::Flush
+        })?;
 
-        log::info!("About to flush");
-        self.display.flush().unwrap(); 
+        Ok(())
     }
 }
