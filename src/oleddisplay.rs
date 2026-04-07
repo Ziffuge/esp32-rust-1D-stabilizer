@@ -144,8 +144,7 @@ impl <'a> OLEDDisplay<'a> {
                 OLEDError::Draw
             })?;
 
-        let mut degree_str = angle.to_string();
-        degree_str.push('°');
+        let degree_str = format!("{:.2}°", angle);
 
         Text::new(&degree_str, Point::new(2, 40), style)
             .draw(&mut self.display)
