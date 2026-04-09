@@ -2,6 +2,7 @@
 // Modules
 mod oleddisplay;
 mod gyroscope;
+mod servo_motor;
 
 // Imports
 use std::thread::sleep;
@@ -11,6 +12,7 @@ use esp_idf_svc::hal::peripherals::Peripherals;
 
 use oleddisplay::OLEDDisplay;
 use gyroscope::{Gyroscope, GyroAxis};
+use servo_motor::ServoMotor;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> { 
     esp_idf_svc::sys::link_patches();
@@ -32,11 +34,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut gyro = Gyroscope::new(
         peripherals.i2c1,
-        pins.gpio45.into(),
-        pins.gpio46.into()
+        pins.gpio3.into(),
+        pins.gpio2.into()
     ).map_err(|_| format!("Failed gyro creation"))?;
 
     gyro.calibrate(GyroAxis::XAxis).map_err(|_| format!("Failed gyro calibration"))?;
+
+    let mut motor = ServoMotor::new(
+        pins.gpio7.into(),
+        peripherals.ledc.timer0,
+        peripherals.ledc.channel0,
+        ).map_err(|_| format!("Failed motor creation"))?;
     
     let mut angle = 0_f32;
     let mut gyro_output;
@@ -48,8 +56,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         gyro_output = gyro.get_angular_velocity(GyroAxis::XAxis)
             .map_err(|_| format!("Failed gyro read"))?;
 
-        angle += gyro_output;
+        angle += gyro_output * 0.5_f32;
         angle = angle % 360_f32;
+
+        motor.drive_angle(-angle)
+            .map_err(|_| format!("Failed motor drive"))?;
 
         log::info!("Gyro Output: {:}", gyro_output);
     }
