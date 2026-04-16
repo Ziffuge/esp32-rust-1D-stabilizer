@@ -5,6 +5,8 @@ use esp_idf_svc::hal::{
     units::Hertz
 };
 
+use crate::utils::ErrorExt;
+
 // See https://www.invensense.com/wp-content/uploads/2015/02/MPU-6000-Datasheet1.pdf
 //     section 9.2
 static MPU_ADDRESS: u8 = 0b1101000;
@@ -35,6 +37,7 @@ enum GyroRegister {
     PowerMgmt2 = 0x6C_u8,
 }
 
+#[derive(Debug)]
 pub enum GyroError {
     I2CDriver,
     RegRead,
@@ -62,10 +65,7 @@ impl <'a> Gyroscope<'a> {
         
         let config = I2cConfig::new().baudrate(Hertz::from(400000));
         let mut i2c = I2cDriver::new(i2c_bus, sda, scl, &config)
-            .map_err(|e| {
-                log::error!("Failed to init i2c driver for gyroscope: {:?}", e);
-                GyroError::I2CDriver 
-            })?;
+            .map_log_error("Failed to init i2c driver for gyroscope", GyroError::I2CDriver)?;
 
         // Wake up from sleep  
         let mut power_mgmt_reg = [0_u8];
@@ -154,10 +154,7 @@ impl <'a> Gyroscope<'a> {
     fn read_register(i2c_driver: &mut I2cDriver, register: GyroRegister, buffer: &mut [u8]) -> Result<(), GyroError> {
 
         i2c_driver.write_read(MPU_ADDRESS, &[register as u8], buffer, 1000)
-            .map_err(|e| {
-                log::error!("Failed generic register read: {:?}", e);
-                GyroError::RegRead 
-            })?;
+            .map_log_error("Failed generic register read", GyroError::RegRead)?;
 
         Ok(())
     }
@@ -166,10 +163,7 @@ impl <'a> Gyroscope<'a> {
 
         let command = [register as u8, data];
         i2c_driver.write(MPU_ADDRESS, &command, 1000)
-            .map_err(|e| {
-                log::error!("Failed generic register write: {:?}", e);
-                GyroError::RegRead 
-            })?;
+            .map_log_error("Failed generic register write", GyroError::RegRead)?;
 
         Ok(())
     }

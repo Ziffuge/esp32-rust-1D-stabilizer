@@ -19,9 +19,14 @@ use embedded_graphics::{
     mono_font::{MonoTextStyleBuilder, iso_8859_1::FONT_7X13}, 
     pixelcolor::BinaryColor, 
     prelude::*, 
-    primitives::{Circle, PrimitiveStyleBuilder, Sector}, 
+    primitives::{Circle, Line, PrimitiveStyleBuilder, Sector}, 
     text::Text
 };
+
+use crate::{stabilizer_state::StabilizerState, utils::ErrorExt};
+
+const DISPLAY_WIDTH: i32 = 128;
+const DISPLAY_HEIGHT: i32 = 64;
 
 pub enum OLEDError {
     Draw,
@@ -83,12 +88,10 @@ impl <'a> OLEDDisplay<'a> {
         })
     }
 
-    fn draw_circle(self: &mut Self, angle: f32) -> Result<(), OLEDError> {
-        let display_width = 128;
-        let display_height = 64; 
-
-        let left_corner = Point::new(2 + display_width / 2, 2);
-        let diameter = display_height - 4;
+    fn draw_circle(self: &mut Self, angle: f32, anchor_angle: f32) -> Result<(), OLEDError> {
+        
+        let left_corner = Point::new(2 + DISPLAY_WIDTH / 2, 2);
+        let diameter = (DISPLAY_HEIGHT - 4) as u32;
 
         let style_inner = PrimitiveStyleBuilder::new()
             .stroke_color(BinaryColor::On)
@@ -101,10 +104,7 @@ impl <'a> OLEDDisplay<'a> {
         Sector::new(left_corner, diameter, start_angle, end_angle)
             .into_styled(style_inner)
             .draw(&mut self.display)
-            .map_err(|e| {
-                log::error!("Failed to fill sector in buffer: {:?}", e);
-                OLEDError::Draw
-            })?;
+            .map_log_error("Failed to fill sector in buffer", OLEDError::Draw)?;
 
         let style_outer = PrimitiveStyleBuilder::new()
             .stroke_color(BinaryColor::On)
@@ -114,60 +114,64 @@ impl <'a> OLEDDisplay<'a> {
         Circle::new(left_corner, diameter)
             .into_styled(style_outer)
             .draw(&mut self.display)
-            .map_err(|e| {
-                log::error!("Failed to draw outer circle to buffer: {:?}", e);
-                OLEDError::Draw
-            })?;
+            .map_log_error("Failed to draw outer circle to buffer", OLEDError::Draw)?;
 
+        let radius = (2 + DISPLAY_HEIGHT / 2) as f32;
+        let dir_angle = (anchor_angle - 90_f32).to_radians();
+        let center = Point::new(DISPLAY_WIDTH * 3 / 4, DISPLAY_HEIGHT / 2);
+        let delta = Point::new((radius * dir_angle.cos()) as i32, (radius * dir_angle.sin()) as i32);
+        let line_style = PrimitiveStyleBuilder::new()
+            .stroke_color(BinaryColor::On)
+            .stroke_width(2)
+            .build();
+        Line::with_delta(center, delta)
+            .into_styled(line_style)
+            .draw(&mut self.display)
+            .map_log_error("Failed to draw line to buffer", OLEDError::Draw)?;
 
         Ok(())
     }
 
-    fn draw_information(self: &mut Self, angle: f32) -> Result<(), OLEDError> {
+    fn draw_information(self: &mut Self, angle: f32, threshold: f32) -> Result<(), OLEDError> {
  
         let style = MonoTextStyleBuilder::new()
             .text_color(BinaryColor::On)
             .font(&FONT_7X13)
-            .build();
+            .build(); 
 
-        Text::new("Current", Point::new(2, 10), style)
+        Text::new("Angle:", Point::new(2, 10), style)
             .draw(&mut self.display)
-            .map_err(|e| {
-                log::error!("Failed to write first text line: {:?}", e);
-                OLEDError::Draw
-            })?;
-
-        Text::new("angle:", Point::new(2, 25), style)
-            .draw(&mut self.display)
-            .map_err(|e| {
-                log::error!("Failed to write second text line: {:?}", e);
-                OLEDError::Draw
-            })?;
+            .map_log_error("Failed to write second text line", OLEDError::Draw)?;
 
         let degree_str = format!("{:.2}°", angle);
 
-        Text::new(&degree_str, Point::new(2, 40), style)
+        Text::new(&degree_str, Point::new(2, 25), style)
             .draw(&mut self.display)
-            .map_err(|e| {
-                log::error!("Failed to write angle text line: {:?}", e);
-                OLEDError::Draw
-            })?;
+            .map_log_error("Failed to write angle text line", OLEDError::Draw)?;
+
+        Text::new("Thresh.:", Point::new(2, 40), style)
+            .draw(&mut self.display)
+            .map_log_error("Failed to write third text line", OLEDError::Draw)?;
+
+        let threshold_str = format!("{:.0}°", threshold);
+        Text::new(&threshold_str, Point::new(2, 55), style)
+            .draw(&mut self.display)
+            .map_log_error("Failed to write threshold text line", OLEDError::Draw)?;
 
         Ok(())
     }
 
-    pub fn draw(self: &mut Self, angle: f32) -> Result<(), OLEDError> {
+    pub fn draw(self: &mut Self, state: StabilizerState) -> Result<(), OLEDError> {
 
         self.display.clear_buffer();
 
-        self.draw_information(angle)?;
+        self.draw_information(state.current_angle, state.threshold)?;
 
-        self.draw_circle(angle)?;
+        self.draw_circle(state.current_angle, state.anchor_angle)?;
+
+        self.display.set_invert(state.freezed).map_log_error("Failed screen inversion", OLEDError::Draw)?;
         
-        self.display.flush().map_err(|e| {
-            log::error!("Failed to flush during draw: {:?}", e);
-            OLEDError::Flush
-        })?;
+        self.display.flush().map_log_error("Failed to flush during draw", OLEDError::Flush)?;
 
         Ok(())
     }

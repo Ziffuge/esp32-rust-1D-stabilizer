@@ -10,6 +10,8 @@ use esp_idf_svc::hal::{
     units::Hertz
 };
 
+use crate::utils::ErrorExt;
+
 pub type MotorDriver<'a> = LedcDriver<'a>;
 
 pub enum ServoMotorError {
@@ -42,19 +44,13 @@ impl <'a> ServoMotor<'a> {
         let timerdriver = LedcTimerDriver::new(
             timer,
             &config
-        ).map_err(|e| {
-            log::error!("Failed timer driver init: {:?}", e);
-            ServoMotorError::DriverInit
-        })?;
+        ).map_log_error("Failed timer driver init", ServoMotorError::DriverInit)?;
 
         let mut driver = LedcDriver::new(
             channel,
             timerdriver,
             pwmpin,
-        ).map_err(|e| {
-            log::error!("Failed pwm driver initialization: {:?}", e);
-            ServoMotorError::DriverInit
-        })?; 
+        ).map_log_error("Failed pwm driver initialization", ServoMotorError::DriverInit)?; 
 
         Self::test_range(&mut driver)?;
         Self::reset_motor(&mut driver)?;
@@ -77,10 +73,7 @@ impl <'a> ServoMotor<'a> {
         
         let duty = (percentage / 100_f32) * motor.get_max_duty() as f32;
         motor.set_duty(duty.round() as u32)
-            .map_err(|e| {
-                log::error!("Failed to drive motor: {:?}", e);
-                ServoMotorError::MotorDrive
-            })?;
+            .map_log_error("Failed to drive motor", ServoMotorError::MotorDrive)?;
 
         Ok(())
 
