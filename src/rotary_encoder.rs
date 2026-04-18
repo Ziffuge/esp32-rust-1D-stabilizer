@@ -2,14 +2,14 @@
 use std::time::Duration;
 
 use esp_idf_svc::hal::{
-    gpio::{AnyInputPin, Input, PinDriver}, 
+    gpio::{AnyInputPin}, 
     pcnt::{config::{ChannelConfig, GlitchFilterConfig, UnitConfig}, *}
 };
 
 use crate::utils::ErrorExt; 
 
+#[derive(Debug)]
 pub enum RotaryEncoderError {
-    //Button,
     ChannelConfig,
     DriverInit,
     GetCount,

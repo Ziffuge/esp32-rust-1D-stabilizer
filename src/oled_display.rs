@@ -1,7 +1,6 @@
 
 use std::thread::sleep;
 use std::time::Duration;
-use std::error::Error;
 
 use esp_idf_svc::hal::{
     gpio::{InputPin, OutputPin, PinDriver, Output}, 
@@ -23,14 +22,17 @@ use embedded_graphics::{
     text::Text
 };
 
-use crate::{stabilizer_state::StabilizerState, utils::ErrorExt};
+use crate::utils::ErrorExt;
 
 const DISPLAY_WIDTH: i32 = 128;
 const DISPLAY_HEIGHT: i32 = 64;
 
+#[derive(Debug)]
 pub enum OLEDError {
     Draw,
-    Flush
+    DriverInit,
+    Flush,
+    I2CBus,
 }
 
 pub type DI<'a> = I2CInterface<I2cDriver<'a>>;
@@ -49,17 +51,19 @@ impl <'a> OLEDDisplay<'a> {
         V:InputPin + OutputPin + 'a,
         W:InputPin + OutputPin + 'a, 
         X:InputPin + OutputPin + 'a> (i2c_bus: T, sda: U, scl: V, rst: W, vext: X) 
-        -> Result<OLEDDisplay<'a>, Box<dyn Error>> {
+        -> Result<OLEDDisplay<'a>, OLEDError> {
 
         // Drive vext low to enable the OLED display
-        let mut vext_driver = PinDriver::output(vext)?;
-        vext_driver.set_low()?;
+        let mut vext_driver = PinDriver::output(vext)
+            .map_log_error("Failed vext pin driver init", OLEDError::DriverInit)?;
+        vext_driver.set_low().map_log_error("Failed vext pin driver set low", OLEDError::DriverInit)?;
      
         // Reset sequence to wake up the display
-        let mut reset = PinDriver::output(rst)?;
-        reset.set_low()?;
+        let mut reset = PinDriver::output(rst)
+            .map_log_error("Failed reset pin driver init", OLEDError::DriverInit)?;
+        reset.set_low().map_log_error("Failed reset pin driver set low", OLEDError::DriverInit)?;
         sleep(Duration::from_millis(50));
-        reset.set_high()?;
+        reset.set_high().map_log_error("Failed reset pin driver set high", OLEDError::DriverInit)?;
 
         // Init I2C bus
         let config = I2cConfig::new().baudrate(esp_idf_svc::hal::units::Hertz(100000));
@@ -68,7 +72,7 @@ impl <'a> OLEDDisplay<'a> {
             sda,
             scl,
             &config,
-        )?;
+        ).map_log_error("Failed i2c bus init", OLEDError::I2CBus)?;
 
         // Init display driver
         let interface = I2CDisplayInterface::new(i2c);
@@ -161,15 +165,17 @@ impl <'a> OLEDDisplay<'a> {
         Ok(())
     }
 
-    pub fn draw(self: &mut Self, state: StabilizerState) -> Result<(), OLEDError> {
+    pub fn draw(self: &mut Self, state: (f32, f32, f32, bool)) -> Result<(), OLEDError> {
+
+        let (current_angle, anchor_angle, threshold, freezed) = state;
 
         self.display.clear_buffer();
 
-        self.draw_information(state.current_angle, state.threshold)?;
+        self.draw_information(current_angle, threshold)?;
 
-        self.draw_circle(state.current_angle, state.anchor_angle)?;
+        self.draw_circle(current_angle, anchor_angle)?;
 
-        self.display.set_invert(state.freezed).map_log_error("Failed screen inversion", OLEDError::Draw)?;
+        self.display.set_invert(freezed).map_log_error("Failed screen inversion", OLEDError::Draw)?;
         
         self.display.flush().map_log_error("Failed to flush during draw", OLEDError::Flush)?;
 

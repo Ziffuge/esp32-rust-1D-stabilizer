@@ -14,8 +14,9 @@ use crate::utils::ErrorExt;
 
 pub type MotorDriver<'a> = LedcDriver<'a>;
 
+#[derive(Debug)]
 pub enum ServoMotorError {
-    AngleOverflow,
+    AngleOverflow(f32),
     DriverInit,
     MotorDrive,
 }
@@ -76,7 +77,6 @@ impl <'a> ServoMotor<'a> {
             .map_log_error("Failed to drive motor", ServoMotorError::MotorDrive)?;
 
         Ok(())
-
     }
 
     fn reset_motor(motor: &mut MotorDriver) -> Result<(), ServoMotorError> {
@@ -85,8 +85,7 @@ impl <'a> ServoMotor<'a> {
 
     fn angle_to_percentage(angle: f32) -> Result<f32, ServoMotorError> {
         if angle < MIN_ANGLE || angle > MAX_ANGLE {
-            log::error!("Angle overflow: {:.2}", angle);
-            return Err(ServoMotorError::AngleOverflow);
+            return Err(ServoMotorError::AngleOverflow(angle));
         }
 
         let mut result = angle;
