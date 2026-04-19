@@ -24,7 +24,6 @@ impl AtomicF32 {
     }
 }
 
-//#[derive(Clone)]
 pub struct StabilizerState {
     current_angle: AtomicF32,
     anchor_angle: AtomicF32,
@@ -75,8 +74,6 @@ impl StabilizerState {
         self.freezed.load(Ordering::Acquire)
     }
 }
-
-//impl Copy for StabilizerState {}
 
 #[derive(Clone)]
 pub struct SharedState(Arc<StabilizerState>);

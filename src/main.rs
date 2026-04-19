@@ -74,7 +74,7 @@ fn threshold_control(rotary_encoder: &mut RotaryEncoder, shared_state: SharedSta
 
         shared_state.set_threshold(threshold);
 
-        sleep(Duration::from_millis(500));
+        sleep(Duration::from_millis(200));
     }
 }
 
