@@ -19,6 +19,8 @@ use esp_idf_svc::hal::peripherals::Peripherals;
 use esp_idf_svc::hal::task::block_on;
 use esp_idf_svc::hal::task::thread::ThreadSpawnConfiguration;
 
+use esp_idf_svc::hal::adc::{attenuation, oneshot::*, oneshot::config::AdcChannelConfig};
+
 use crate::{
     oled_display::OLEDDisplay,
     gyroscope::{Gyroscope, GyroAxis},
@@ -33,6 +35,7 @@ const AXIS_OF_INTEREST: GyroAxis = GyroAxis::XAxis;
 const THRESHOLD_STEP_SIZE: f32 = 1_f32;
 
 // Tasks ======================================================
+
 fn track_angle(gyro: &mut Gyroscope, tx: mpsc::Sender<f32>, shared_state: SharedState) -> StabilizerResult<()> { 
     let mut angle = 0_f32;
     let mut update;
@@ -131,9 +134,9 @@ fn main() -> StabilizerResult<()> {
     let shared_state = SharedState::new(state);
     let state_gyro = SharedState::clone(&shared_state);
     let state_ui = SharedState::clone(&shared_state);
-    let state_rotary = SharedState::clone(&shared_state);
+    //let state_rotary = SharedState::clone(&shared_state);
     let state_motor = SharedState::clone(&shared_state);
-    let state_button = SharedState::clone(&shared_state);
+    //let state_button = SharedState::clone(&shared_state);
 
     // Channels =========================
     let (tx_gtm, rx_gtm) = mpsc::channel::<f32>();
@@ -167,15 +170,15 @@ fn main() -> StabilizerResult<()> {
     let mut boxed_motor = Box::new(motor);
    
     // RotaryEncode Component ===========
-    let rotary_encoder = RotaryEncoder::new(
-        pins.gpio33.into(),
-        pins.gpio34.into(),
-    )?;
-    let mut boxed_rotary = Box::new(rotary_encoder);
+    //let rotary_encoder = RotaryEncoder::new(
+    //    pins.gpio33.into(),
+    //    pins.gpio34.into(),
+    //)?;
+    //let mut boxed_rotary = Box::new(rotary_encoder);
 
     // Button Press =====================
-    let mut axial_button = PinDriver::input(pins.gpio35, esp_idf_svc::hal::gpio::Pull::Down)
-        .map_log_error("Failed button creation", StabilizerError::Other)?;
+    //let mut axial_button = PinDriver::input(pins.gpio35, esp_idf_svc::hal::gpio::Pull::Down)
+    //    .map_log_error("Failed button creation", StabilizerError::Other)?;
 
     // Spawn Tasks ======================
     log::info!("Ready to spawn tasks");
@@ -186,15 +189,15 @@ fn main() -> StabilizerResult<()> {
     })?; 
     log::info!("Spawned UI task");
 
-    spawn_task(c"threshold_task", Core::Core0, move || {
-        threshold_control(&mut boxed_rotary, state_rotary)
-    })?;
-    log::info!("Spawned threshold control task");
+    //spawn_task(c"threshold_task", Core::Core0, move || {
+    //    threshold_control(&mut boxed_rotary, state_rotary)
+    //})?;
+    //log::info!("Spawned threshold control task");
 
-    spawn_task(c"button_task", Core::Core0, move || {
-        button_task(&mut axial_button, state_button)
-    })?;
-    log::info!("Spawned button task");
+    //spawn_task(c"button_task", Core::Core0, move || {
+    //    button_task(&mut axial_button, state_button)
+    //})?;
+    //log::info!("Spawned button task");
 
     // Core 1
     spawn_task(c"motor_task", Core::Core1, move || {
@@ -202,10 +205,47 @@ fn main() -> StabilizerResult<()> {
     })?; 
     log::info!("Spawned motor control task");
  
-    spawn_task(c"gyro_task", Core::Core1, move || {
-        track_angle(&mut boxed_gyro, tx_gtm, state_gyro)
+    //spawn_task(c"gyro_task", Core::Core1, move || {
+    //    track_angle(&mut boxed_gyro, tx_gtm, state_gyro)
+    //})?;
+    //log::info!("Spawned gyro task");
+
+    // Joystick 
+    
+    spawn_task(c"joystick_task", Core::Core1, move || {
+
+        let adc = AdcDriver::new(peripherals.adc2).map_log_error("AdcDriver init failed", StabilizerError::Other)?;
+        let config = AdcChannelConfig {
+            attenuation: attenuation::DB_12,
+            ..Default::default()
+        };
+
+        let mut adc_pin = AdcChannelDriver::new(&adc, pins.gpio20, &config)
+            .map_log_error("AdcChannelDriver init failed", StabilizerError::Other)?;
+
+        let mut angle;
+        let mut adc_output;
+        const ADC_MAX: f32 = 3100_f32;
+        const ANGLE_RANGE: f32 = 180_f32;
+        loop {
+            sleep(Duration::from_millis(100));
+
+            // Read ADC 
+            adc_output = adc.read(&mut adc_pin)
+                .map_log_error("Failed joystick adc read", StabilizerError::Task("Joystick"))?;
+            log::info!("ADC output: {:}", adc_output);
+
+            // Compute corresponding angle 
+            angle = adc_output as f32 / ADC_MAX;
+            angle = angle * ANGLE_RANGE;
+            angle = angle - 90_f32;
+
+            // Send to motor and update shared state
+            tx_gtm.send(angle).map_log_error("Failed send", StabilizerError::Task("Joystick"))?;
+            state_gyro.set_current_angle(angle);
+        }
     })?;
-    log::info!("Spawned gyro task");
+    log::info!("Spawned joystick task");
 
     // Display debug info on serial monitor
     loop {
@@ -215,5 +255,6 @@ fn main() -> StabilizerResult<()> {
 
         log::info!("Current angle: {:}", current_angle);
         log::info!("Threshold: {:}", threshold);
+        //log::info!("ADC value: {:}", adc.read(&mut adc_pin).unwrap());
     }
 }
