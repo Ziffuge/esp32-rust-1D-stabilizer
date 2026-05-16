@@ -18,6 +18,7 @@ This project is possible thanks to :
 
 This project assumes the following wiring of the different components:
 ![](pin-map.png)
+
 Though, one could change the pins used inside [main.rs](./src/main.rs).
 
 ## Gyroscope
@@ -64,8 +65,8 @@ Eliot Tritschler
 # References
 
 - ESP32-S3 References
- - [ESP32-S3 Technical Reference Manual](https://www.espressif.com/sites/default/files/documentation/esp32-s3_technical_reference_manual_en.pdf) 
- - ![Heltec Board Reference](https://resource.heltec.cn/download/WiFi_LoRa_32_V3/HTIT-WB32LA_V3.2.pdf)
+  - [ESP32-S3 Technical Reference Manual](https://www.espressif.com/sites/default/files/documentation/esp32-s3_technical_reference_manual_en.pdf) 
+  - ![Heltec Board Reference](https://resource.heltec.cn/download/WiFi_LoRa_32_V3/HTIT-WB32LA_V3.2.pdf)
 - Espressif Rust documentation
   - [ESP-RS Github](https://github.com/esp-rs)
   - [ESP-HAL Github](https://github.com/esp-rs/esp-hal)
