@@ -1,13 +1,14 @@
 [package]
-name = "project"
+name = "esp32-1D-stabilizer"
 version = "0.1.0"
 authors = ["Ziffuge <eliot.tritschler@gmail.com>"]
 edition = "2021"
 resolver = "2"
 rust-version = "1.82"
+license = "MIT OR Apache-2.0"
 
 [[bin]]
-name = "project"
+name = "stabilizer"
 harness = false # do not use the built-in cargo test harness -> resolve rust-analyzer errors
 
 [profile.release]
